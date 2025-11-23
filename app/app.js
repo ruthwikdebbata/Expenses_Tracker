@@ -5,12 +5,15 @@ const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
+const { User } = require("./models/user");
 
 // Create express app
 var app = express();
 // Body parsers
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(sessionMiddleware);
 app.use(bodyParser.json());
+
 // Add static files location
 app.use(express.static("static"));
 // Pug setup
@@ -47,6 +50,60 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
+
+// login api
+app.post('/set-password', async function (req, res) {
+    const params = req.body;
+    const user = new User(params.email);
+
+    try {
+        const uId = await user.getIdFromEmail();
+        if (uId) {
+            await user.setUserPassword(params.password);
+            console.log(req.session.id);
+            res.send('password reset succesfully');
+        } else {
+            const newId = await user.addUser(params.email);
+            res.send('Account created succesfully');
+        }
+    } catch (err) {
+        console.error(`Error while setting password `, err.message);
+        res.send('An error occurred while setting the password');
+    }
+});
+
+
+// Check submitted email and password pair
+app.post('/authenticate', async function (req, res) {
+    const params = req.body; 
+    const user = new User(params.email);
+    
+    try {
+        const uId = await user.getIdFromEmail();
+        if (uId) {
+            const match = await user.authenticate(params.password);
+            console.log(match);
+            if (match) {
+                req.session.uid = uId;
+                req.session.loggedIn = true;
+                console.log(req.session.id);
+                res.redirect('/main');
+            } else {
+                res.send('Invalid email');
+            }
+        } else {
+            res.send('Invalid email');
+        }
+    } catch (err) {
+        console.error(`Error while comparing `, err.message);
+    }
+});
+
+// Logout
+app.get('/logout', function (req, res) {
+    req.session.destroy();
+    res.redirect('/login');
+});
 
 // Start server on port 3000
 app.listen(3000,function(){
