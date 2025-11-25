@@ -37,11 +37,10 @@ class User {
     }
     
     // Add a new record to the users table    
-    async addUser(password) {
+    async addUser(password, name = null) {
         const pw = await bcrypt.hash(password, 10);
-        let sql = "INSERT INTO Users (email, password) VALUES (? , ?)";
-        const result = await db.query(sql, [this.email, pw]);
-        console.log(result.insertId);
+        let sql = "INSERT INTO Users (name, email, password) VALUES (? , ?, ?)";
+        const result = await db.query(sql, [name, this.email, pw]);
         this.id = result.insertId;
         return this.id;
     }
