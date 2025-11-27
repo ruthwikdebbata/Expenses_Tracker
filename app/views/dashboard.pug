@@ -129,6 +129,7 @@ html
     -   var num = Number(value);
     -   return Number.isNaN(num) ? value : symbol + num.toFixed(2);
     - };
+    - var today = new Date().toISOString().slice(0,10);
 
     .container.dashboard
       .dashboard-header
@@ -163,7 +164,7 @@ html
                 th Amount
             tbody
               each expense in expenseItems
-                tr
+                tr.clickable-row(data-href=`/expenses/${expense.id || ''}`)
                   td= expense.spent_at || '—'
                   td
                     if expense.category
@@ -204,6 +205,17 @@ html
             input#description.form-control(type="text" name="description" placeholder="What was this for?")
           .col-12.col-md-2
             label.form-label(for="spent_at") Date
-            input#spent_at.form-control(type="date" name="spent_at" required)
+            input#spent_at.form-control(type="date" name="spent_at" required value=today)
           .col-12
             button.btn.btn-primary.btn-lg.w-100(type="submit") Add expense
+
+    script.
+      document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.clickable-row[data-href]').forEach(function(row) {
+          row.style.cursor = 'pointer';
+          row.addEventListener('click', function() {
+            var href = this.getAttribute('data-href');
+            if (href) window.location.href = href;
+          });
+        });
+      });

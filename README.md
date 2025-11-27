@@ -23,6 +23,15 @@ http://localhost:8081/
 
 http://localhost:3000
 
+### Expenses CRUD API
+
+Authenticated routes (require session login):
+- `GET /api/expenses?limit=50` – list recent expenses for the logged-in user.
+- `GET /api/expenses/:id` – fetch a single expense.
+- `POST /api/expenses` – create an expense. Body: `{ amount, spentAt?, categoryId?, description?, currency? }`.
+- `PUT /api/expenses/:id` – update an expense with the same body fields as POST.
+- `DELETE /api/expenses/:id` – remove an expense.
+
 For reference, see the video at: https://roehampton.cloud.panopto.eu/Panopto/Pages/Viewer.aspx?id=6f290a6b-ba94-4729-9632-adcf00ac336e
 
 NB if you are running this on your own computer rather than the azure labs that has been set up for you, you will need to install the following:

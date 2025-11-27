@@ -33,6 +33,48 @@ const db = require('./services/db');
 app.use(cookieParser());
 app.use(sessionMiddleware);
 
+// Simple auth guard for API routes
+function requireAuth(req, res, next) {
+  if (!req.session || !req.session.uid) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
+function validateExpensePayload(body) {
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 'Amount must be a positive number';
+  }
+
+  const spentAt = body.spentAt ? new Date(body.spentAt) : new Date();
+  if (Number.isNaN(spentAt.getTime())) {
+    return 'Invalid spentAt date';
+  }
+
+  const currency = body.currency || 'GBR';
+  if (typeof currency !== 'string' || currency.length !== 3) {
+    return 'Currency must be a 3-letter code';
+  }
+
+  const categoryIdRaw = body.categoryId ?? body.category_id;
+  const categoryId = categoryIdRaw === undefined || categoryIdRaw === null || categoryIdRaw === '' || categoryIdRaw === 'other'
+    ? null
+    : Number(categoryIdRaw);
+
+  if (categoryId !== null && !Number.isInteger(categoryId)) {
+    return 'Category must be a valid id or omitted';
+  }
+
+  return {
+    categoryId,
+    description: body.description || null,
+    amount,
+    currency: currency.toUpperCase(),
+    spentAt: spentAt.toISOString().slice(0, 19).replace('T', ' '), // MySQL DATETIME
+  };
+}
+
 // Create a route for root - /
 app.get("/", function(req, res) {
     res.send("Hello world!");
@@ -139,7 +181,7 @@ app.get('/dashboard', async (req, res) => {
     );
 
     const expenses = await db.query(
-      `SELECT e.spent_at, e.description, e.amount, COALESCE(c.name, 'Uncategorized') AS category
+      `SELECT e.id, e.spent_at, e.description, e.amount, COALESCE(c.name, 'Uncategorized') AS category
        FROM Expenses e
        LEFT JOIN Categories c ON e.category_id = c.id
        WHERE e.user_id = ?
@@ -162,6 +204,266 @@ app.get('/dashboard', async (req, res) => {
   } catch (err) {
     console.error('Error loading dashboard', err);
     res.status(500).send('Unable to load dashboard right now.');
+  }
+});
+
+// Add expense from dashboard form
+app.post('/expenses', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const amount = Number(req.body.amount);
+  const rawCategory = req.body.category_id;
+  const categoryId = rawCategory === undefined || rawCategory === null || rawCategory === '' || rawCategory === 'other'
+    ? null
+    : Number(rawCategory);
+  const description = req.body.description || null;
+  const spentDate = req.body.spent_at;
+  const currency = 'GBR';
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).send('Amount must be a positive number');
+  }
+
+  if (categoryId !== null && !Number.isInteger(categoryId)) {
+    return res.status(400).send('Invalid category');
+  }
+
+  const spentAt = spentDate ? new Date(spentDate) : new Date();
+
+  if (Number.isNaN(spentAt.getTime())) {
+    return res.status(400).send('Invalid date');
+  }
+
+  const spentAtSql = spentAt.toISOString().slice(0, 19).replace('T', ' ');
+
+  try {
+    await db.query(
+      `INSERT INTO Expenses (user_id, category_id, description, amount, currency, spent_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, categoryId, description, amount, currency, spentAtSql]
+    );
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error('Error creating expense from dashboard', err);
+    res.status(500).send('Unable to create expense right now.');
+  }
+});
+
+// Expense details view
+app.get('/expenses/:id', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const expenseId = Number(req.params.id);
+
+  if (!Number.isInteger(expenseId) || expenseId <= 0) {
+    return res.status(404).send('Expense not found');
+  }
+
+  try {
+    const rows = await db.query(
+      `SELECT e.id, e.description, e.amount, e.currency, e.spent_at, e.category_id,
+              COALESCE(c.name, 'Uncategorized') AS category
+       FROM Expenses e
+       LEFT JOIN Categories c ON e.category_id = c.id
+       WHERE e.id = ? AND e.user_id = ?`,
+      [expenseId, userId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).send('Expense not found');
+    }
+
+    const categories = await db.query(
+      `SELECT id, name FROM Categories WHERE user_id = ? ORDER BY name ASC`,
+      [userId]
+    );
+
+    res.render('expense', { expense: rows[0], categories });
+  } catch (err) {
+    console.error('Error loading expense detail', err);
+    res.status(500).send('Unable to load expense right now.');
+  }
+});
+
+// Update expense from detail view
+app.post('/expenses/:id', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const expenseId = Number(req.params.id);
+
+  const amount = Number(req.body.amount);
+  const rawCategory = req.body.category_id;
+  const categoryId = rawCategory === undefined || rawCategory === null || rawCategory === '' || rawCategory === 'other'
+    ? null
+    : Number(rawCategory);
+  const description = req.body.description || null;
+  const currency = (req.body.currency || 'GBR').toUpperCase();
+  const spentDate = req.body.spent_at;
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).send('Amount must be a positive number');
+  }
+  if (categoryId !== null && !Number.isInteger(categoryId)) {
+    return res.status(400).send('Invalid category');
+  }
+
+  const spentAt = spentDate ? new Date(spentDate) : new Date();
+  if (Number.isNaN(spentAt.getTime())) {
+    return res.status(400).send('Invalid date');
+  }
+  const spentAtSql = spentAt.toISOString().slice(0, 19).replace('T', ' ');
+
+  try {
+    const result = await db.query(
+      `UPDATE Expenses
+       SET category_id = ?, description = ?, amount = ?, currency = ?, spent_at = ?
+       WHERE id = ? AND user_id = ?`,
+      [categoryId, description, amount, currency, spentAtSql, expenseId, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).send('Expense not found');
+    }
+
+    res.redirect(`/expenses/${expenseId}`);
+  } catch (err) {
+    console.error('Error updating expense', err);
+    res.status(500).send('Unable to update expense right now.');
+  }
+});
+
+// Delete expense
+app.post('/expenses/:id/delete', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const expenseId = Number(req.params.id);
+
+  if (!Number.isInteger(expenseId) || expenseId <= 0) {
+    return res.status(404).send('Expense not found');
+  }
+
+  try {
+    const result = await db.query(
+      `DELETE FROM Expenses WHERE id = ? AND user_id = ?`,
+      [expenseId, userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).send('Expense not found');
+    }
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error('Error deleting expense', err);
+    res.status(500).send('Unable to delete expense right now.');
+  }
+});
+
+// ----- Expenses CRUD API -----
+
+// List latest expenses for the logged-in user
+app.get('/api/expenses', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const limit = Math.min(Number(req.query.limit) || 50, 100);
+
+  try {
+    const rows = await db.query(
+      `SELECT e.id, e.description, e.amount, e.currency, e.spent_at, e.category_id,
+              COALESCE(c.name, 'Uncategorized') AS category
+       FROM Expenses e
+       LEFT JOIN Categories c ON e.category_id = c.id
+       WHERE e.user_id = ?
+       ORDER BY e.spent_at DESC
+       LIMIT ?`,
+      [userId, limit]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Error listing expenses', err);
+    res.status(500).json({ error: 'Unable to list expenses' });
+  }
+});
+
+// Get a single expense
+app.get('/api/expenses/:id', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const expenseId = Number(req.params.id);
+
+  try {
+    const rows = await db.query(
+      `SELECT id, description, amount, currency, spent_at, category_id
+       FROM Expenses
+       WHERE id = ? AND user_id = ?`,
+      [expenseId, userId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Error fetching expense', err);
+    res.status(500).json({ error: 'Unable to fetch expense' });
+  }
+});
+
+// Create an expense
+app.post('/api/expenses', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const payload = validateExpensePayload(req.body);
+  if (typeof payload === 'string') {
+    return res.status(400).json({ error: payload });
+  }
+
+  try {
+    const result = await db.query(
+      `INSERT INTO Expenses (user_id, category_id, description, amount, currency, spent_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, payload.categoryId, payload.description, payload.amount, payload.currency, payload.spentAt]
+    );
+    res.status(201).json({ id: result.insertId, ...payload });
+  } catch (err) {
+    console.error('Error creating expense', err);
+    res.status(500).json({ error: 'Unable to create expense' });
+  }
+});
+
+// Update an expense
+app.put('/api/expenses/:id', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const expenseId = Number(req.params.id);
+  const payload = validateExpensePayload(req.body);
+  if (typeof payload === 'string') {
+    return res.status(400).json({ error: payload });
+  }
+
+  try {
+    const result = await db.query(
+      `UPDATE Expenses
+       SET category_id = ?, description = ?, amount = ?, currency = ?, spent_at = ?
+       WHERE id = ? AND user_id = ?`,
+      [payload.categoryId, payload.description, payload.amount, payload.currency, payload.spentAt, expenseId, userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+    res.json({ id: expenseId, ...payload });
+  } catch (err) {
+    console.error('Error updating expense', err);
+    res.status(500).json({ error: 'Unable to update expense' });
+  }
+});
+
+// Delete an expense
+app.delete('/api/expenses/:id', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const expenseId = Number(req.params.id);
+
+  try {
+    const result = await db.query(
+      `DELETE FROM Expenses WHERE id = ? AND user_id = ?`,
+      [expenseId, userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+    res.status(204).send();
+  } catch (err) {
+    console.error('Error deleting expense', err);
+    res.status(500).json({ error: 'Unable to delete expense' });
   }
 });
 

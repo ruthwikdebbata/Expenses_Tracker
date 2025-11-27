@@ -16,7 +16,8 @@ services:
     env_file:
       - ./.env
     ports:
-      - "3308:3306"
+      # Map to a non-default host port to avoid clashing with local MySQL
+      - "3307:3306"
     volumes:
       - ./db:/var/lib/mysql
   phpmyadmin:
@@ -25,4 +26,5 @@ services:
     env_file:
       - ./.env
     ports:
-      - "8081:80"
+      # Use an alternate host port if 8081 is in use
+      - "8082:80"
