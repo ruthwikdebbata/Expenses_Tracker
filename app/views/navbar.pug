@@ -1,0 +1,16 @@
+nav.navbar.navbar-expand-lg.navbar-dark.app-navbar
+  .app-nav-inner
+    a.navbar-brand.fw-bold(href="/dashboard") Expenses Tracker
+    button.navbar-toggler(type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation")
+      span.navbar-toggler-icon
+    #mainNav.collapse.navbar-collapse
+      ul.navbar-nav.me-auto.mb-2.mb-lg-0
+        li.nav-item
+          a.nav-link(href="/dashboard") Dashboard
+        li.nav-item
+          a.nav-link(href="/categories") Categories
+        li.nav-item
+          a.nav-link(href="/profile") Profile
+      ul.navbar-nav.ms-auto
+        li.nav-item
+          a.btn.btn-sm.btn-logout(href="/logout") Logout

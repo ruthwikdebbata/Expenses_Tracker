@@ -9,7 +9,17 @@ html
       body { background: #f0f2f5; }
       .card { border: none; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
       .pill { display:inline-block; padding:6px 12px; border-radius:999px; background:#eef2f7; font-weight:600; }
+      .app-navbar { background: linear-gradient(90deg, #0f172a, #0f766e); box-shadow: 0 8px 20px rgba(0,0,0,0.12); padding: 12px 0; border:none; }
+      .app-nav-inner { max-width: 1200px; margin: 0 auto; width: 94%; display: flex; align-items: center; gap: 16px; }
+      .app-navbar .navbar-brand { color: #f8fafc; letter-spacing: 0.02em; }
+      .app-navbar .nav-link { color: rgba(248, 250, 252, 0.88) !important; font-weight: 600; }
+      .app-navbar .nav-link:hover { color: #fff !important; }
+      .navbar-toggler { border-color: rgba(255,255,255,0.4); }
+      .navbar-toggler-icon { filter: invert(1); }
+      .btn-logout { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.22); color: #fff; }
+      .btn-logout:hover { background: rgba(255,255,255,0.22); color: #fff; }
   body
+    include navbar
     - const money = function(val) { return '£' + Number(val || 0).toFixed(2); };
     - const fmtDate = function(d) { return d ? new Date(d).toISOString().slice(0,10) : ''; };
     .container.mt-4

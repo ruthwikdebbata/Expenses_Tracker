@@ -10,6 +10,45 @@ html
       body {
         background: #f0f2f5;
       }
+      .app-navbar {
+        background: linear-gradient(90deg, #0f172a, #0f766e);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        border: none;
+        padding: 12px 0;
+      }
+      .app-nav-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        width: 94%;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .app-navbar .navbar-brand { color: #f8fafc; letter-spacing: 0.02em; }
+      .app-navbar .nav-link { color: rgba(248, 250, 252, 0.88) !important; font-weight: 600; }
+      .app-navbar .nav-link:hover { color: #fff !important; }
+      .navbar-toggler { border-color: rgba(255,255,255,0.4); }
+      .navbar-toggler-icon { filter: invert(1); }
+      .app-navbar .navbar-brand {
+        color: #f8fafc;
+        letter-spacing: 0.02em;
+      }
+      .app-navbar .nav-link {
+        color: rgba(248, 250, 252, 0.78);
+        font-weight: 600;
+      }
+      .app-navbar .nav-link:hover {
+        color: #fff;
+      }
+      .btn-logout {
+        background: rgba(255,255,255,0.14);
+        border-color: rgba(255,255,255,0.22);
+        color: #fff;
+      }
+      .btn-logout:hover {
+        background: rgba(255,255,255,0.22);
+        color: #fff;
+      }
       .container.dashboard {
         max-width: 1100px;
         width: 95%;
@@ -130,6 +169,8 @@ html
     -   return Number.isNaN(num) ? value : symbol + num.toFixed(2);
     - };
     - var today = new Date().toISOString().slice(0,10);
+
+    include navbar
 
     .container.dashboard
       .dashboard-header

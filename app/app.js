@@ -7,15 +7,23 @@ const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const { User } = require("./models/user");
 const oneDay = 1000 * 60 * 60 * 24;
-const sessionMiddleware = session({
-  secret: "secretkeysdfjsflyoifasd",
-  saveUninitialized: true,
-  resave: false,
-  cookie: { maxAge: oneDay },
-});
 
 // Create express app
 var app = express();
+// Trust proxy helps when running behind Docker/compose so secure cookies work as expected.
+app.set('trust proxy', 1);
+const sessionMiddleware = session({
+  secret: "secretkeysdfjsflyoifasd",
+  saveUninitialized: false, // only save when something meaningful is set
+  resave: false,
+  rolling: true, // refresh expiry on each request
+  cookie: {
+    maxAge: oneDay,
+    sameSite: 'lax',
+    secure: false, // set to true only when serving over HTTPS
+  },
+});
+
 // Body parsers
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
@@ -350,6 +358,96 @@ app.post('/expenses/:id/delete', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error deleting expense', err);
     res.status(500).send('Unable to delete expense right now.');
+  }
+});
+
+// Categories listing and creation
+app.get('/categories', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  try {
+    const categories = await db.query(
+      `SELECT id, name, is_default, created_at
+       FROM Categories
+       WHERE user_id = ?
+       ORDER BY name ASC`,
+      [userId]
+    );
+    res.render('categories', { categories });
+  } catch (err) {
+    console.error('Error loading categories', err);
+    res.status(500).send('Unable to load categories right now.');
+  }
+});
+
+app.post('/categories', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const name = (req.body.name || '').trim();
+
+  if (!name) {
+    return res.status(400).send('Name is required');
+  }
+
+  try {
+    await db.query(
+      `INSERT INTO Categories (user_id, name, color, is_default)
+       VALUES (?, ?, NULL, 0)`,
+      [userId, name]
+    );
+    res.redirect('/categories');
+  } catch (err) {
+    console.error('Error creating category', err);
+    // likely duplicate
+    res.status(500).send('Unable to create category right now.');
+  }
+});
+
+app.post('/categories/:id', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const categoryId = Number(req.params.id);
+  const name = (req.body.name || '').trim();
+
+  if (!Number.isInteger(categoryId) || categoryId <= 0) {
+    return res.status(404).send('Category not found');
+  }
+  if (!name) {
+    return res.status(400).send('Name is required');
+  }
+
+  try {
+    const result = await db.query(
+      `UPDATE Categories SET name = ? WHERE id = ? AND user_id = ?`,
+      [name, categoryId, userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).send('Category not found');
+    }
+    res.redirect('/categories');
+  } catch (err) {
+    console.error('Error updating category', err);
+    res.status(500).send('Unable to update category right now.');
+  }
+});
+
+app.post('/categories/:id/delete', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const categoryId = Number(req.params.id);
+
+  if (!Number.isInteger(categoryId) || categoryId <= 0) {
+    return res.status(404).send('Category not found');
+  }
+
+  try {
+    const result = await db.query(
+      `DELETE FROM Categories WHERE id = ? AND user_id = ?`,
+      [categoryId, userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).send('Category not found');
+    }
+    res.redirect('/categories');
+  } catch (err) {
+    console.error('Error deleting category', err);
+    res.status(500).send('Unable to delete category right now.');
   }
 });
 
