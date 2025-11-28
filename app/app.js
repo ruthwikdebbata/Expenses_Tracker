@@ -85,7 +85,10 @@ function validateExpensePayload(body) {
 
 // Create a route for root - /
 app.get("/", function(req, res) {
-    res.send("Hello world!");
+  if (req.session && req.session.uid) {
+    return res.redirect('/dashboard');
+  }
+  res.redirect('/login');
 });
 
 // Render login form
@@ -358,6 +361,75 @@ app.post('/expenses/:id/delete', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error deleting expense', err);
     res.status(500).send('Unable to delete expense right now.');
+  }
+});
+
+// Profile page
+app.get('/profile', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const flash = req.session.profileFlash || null;
+  delete req.session.profileFlash;
+  try {
+    const rows = await db.query(
+      `SELECT name, email, created_at FROM Users WHERE id = ?`,
+      [userId]
+    );
+    const user = rows[0] || { name: '', email: '', created_at: null };
+    res.render('profile', { user, flash });
+  } catch (err) {
+    console.error('Error loading profile', err);
+    res.status(500).send('Unable to load profile right now.');
+  }
+});
+
+app.post('/profile/password', requireAuth, async (req, res) => {
+  const userId = req.session.uid;
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  const setFlash = (type, message) => {
+    req.session.profileFlash = { type, message };
+  };
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    setFlash('danger', 'All password fields are required.');
+    return res.redirect('/profile');
+  }
+  if (newPassword !== confirmPassword) {
+    setFlash('danger', 'New passwords do not match.');
+    return res.redirect('/profile');
+  }
+  if (newPassword.length < 8) {
+    setFlash('danger', 'New password must be at least 8 characters.');
+    return res.redirect('/profile');
+  }
+
+  try {
+    const rows = await db.query(
+      `SELECT password FROM Users WHERE id = ?`,
+      [userId]
+    );
+    if (!rows.length) {
+      setFlash('danger', 'User not found.');
+      return res.redirect('/profile');
+    }
+
+    const matches = await bcrypt.compare(currentPassword, rows[0].password);
+    if (!matches) {
+      setFlash('danger', 'Current password is incorrect.');
+      return res.redirect('/profile');
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await db.query(
+      `UPDATE Users SET password = ? WHERE id = ?`,
+      [hashed, userId]
+    );
+    setFlash('success', 'Password updated successfully.');
+    res.redirect('/profile');
+  } catch (err) {
+    console.error('Error updating password', err);
+    setFlash('danger', 'Unable to update password right now.');
+    res.redirect('/profile');
   }
 });
 
